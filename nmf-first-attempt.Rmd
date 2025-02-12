@@ -13,6 +13,10 @@ library(dplyr)
 library(NMF)
 library(tidyverse)
 setwd("//wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality")
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(scales)  # For percentage formatting
 ```
 
 ```{r load data}
@@ -122,15 +126,21 @@ test_y <- test_y |>
 df_long <- test_y |>
   pivot_longer(cols = -Factor, names_to = "Bin", values_to = "Value")
 
+glimpse(df_long)
+# Set threshold to filter out small values
+threshold <- 1e-5  # Arbitrary
+
+df_long <- df_long |>
+  filter(Value > threshold)  # Keep only bins above threshold
+
 # Plot the Data
-ggplot(df_long, aes(x = Factor, y = Value, fill = Bin)) +
-  geom_bar(stat = "identity", position = "dodge") +
+ggplot(df_long, aes(x = Bin, y = Value, fill = Bin)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Grouped bars
+  facet_wrap(~Factor, scales = "free") +  # Separate by factor
+ # scale_y_continuous(labels = percent_format(scale = 1)) +  # Convert Y to percentage
   theme_minimal() +
-  labs(title = "Bar Chart of Bins by Factor",
-       x = "Factor",
-       y = "Value",
-       fill = "Bins") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_viridis_d()  # Improve color scheme
 ```
 
 
