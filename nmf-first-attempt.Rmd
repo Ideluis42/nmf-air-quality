@@ -1,0 +1,142 @@
+---
+title: "nmf attempt"
+output: html_document
+date: "2025-02-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(dplyr)
+library(NMF)
+library(tidyverse)
+setwd("//wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality")
+```
+
+```{r load data}
+load("cleaned_modpm.RData")
+```
+
+```{r}
+# remove non numeric data -- can't put non numeric data through nmf
+numeric_cols <- c("bin0", "bin1", "bin2", "bin3", "bin4", "bin5", "bin6", "bin7",
+                  "bin8", "bin9", "bin10", "bin11", "bin12", "bin13", "bin14", "bin15",
+                  "bin16", "bin17", "bin18", "bin19", "bin20", "bin21", "bin22", "bin23",
+                  "pm1", "pm25", "pm10")
+
+X <- aq_df_filtered[, numeric_cols]
+X <- as.matrix(X) # transform into matrix
+X <- na.omit(X)  # Remove rows with NA values
+
+# Ensure all values are non-negative 
+X[X < 0] <- 0  # Replace negative values with 0
+```
+
+```{r}
+summary(X)
+```
+
+```{r}
+set.seed(123)  # For reproducibility
+X_sample <- X[sample(nrow(X), 5000), ]  # Sample 5000 rows
+# .options = t stores the residuals track
+res <- nmf(X_sample, 4, method="brunet", seed=123, .options = "t")
+
+```
+
+```{r}
+summary(res)
+```
+
+```{r}
+plot(res)
+# Check how well the data is approximated
+heatmap(basis(res) %*% coef(res))
+```
+
+# Heat Map Notes:
+
+-   The labels along the X-axis are the features used in the NMF analysis
+
+-   The Y-axis represents sample
+
+-   The clustering dendrogram (tree-like structure) suggests that similar samples are grouped together
+
+-   Dark red regions indicate higher values.
+
+-   Light yellow regions indicate lower values (almost zero)
+
+-   This suggests that some features (e.g., pm10, bin3) have higher values in certain groups of samples
+
+-   The features are not evenly distributed; most values are close to zero except for a few high-intensity ones
+
+-   Only certain variables (e.g., pm10, bin3, bin19) seem to contribute significantly to the structure.
+
+    -   The clusters may indicate groups of similar environmental conditions (e.g., high vs. low pollution levels).
+
+```{r}
+heatmap(basis(res), scale="row", main="Normalized Feature Contributions")
+print(basis(res))  # View raw feature contributions
+```
+```{r}
+heatmap(log1p(X))
+
+```
+
+```{r}
+coefmap(res)
+```
+```{r}
+glimpse(res)
+```
+
+```{r}
+## first need to access factor data
+test_x <-
+  basis(res)
+
+test_y <-
+  coef(res)
+
+test_x |>
+  data.frame(test_x)
+
+test_y <-
+  data.frame(test_y) 
+```
+
+
+```{r}
+
+## want to create a bar plot, where each bin is a bar, separated by the 4 factors
+# first need to create a factor column
+
+test_y$Factor <- as.factor(1:nrow(test_y))
+
+test_y <- test_y |>
+  select(Factor, everything())
+
+# Reshape Data to Long Format
+df_long <- test_y |>
+  pivot_longer(cols = -Factor, names_to = "Bin", values_to = "Value")
+
+# Plot the Data
+ggplot(df_long, aes(x = Factor, y = Value, fill = Bin)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Bar Chart of Bins by Factor",
+       x = "Factor",
+       y = "Value",
+       fill = "Bins") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r}
+basismap(res)
+
+```
+
