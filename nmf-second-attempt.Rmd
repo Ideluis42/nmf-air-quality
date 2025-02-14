@@ -1,7 +1,7 @@
 ---
-title: "nmf attempt"
+title: "nmf attempt 2"
 output: html_document
-date: "2025-02-11"
+date: "2025-02-13"
 ---
 
 ```{r setup, include=FALSE}
@@ -17,11 +17,21 @@ library(ggplot2)
 library(tidyr)
 library(dplyr)
 library(scales)  # For percentage formatting
+library(openair)
 ```
 
 ```{r load data}
 load("cleaned_modpm.RData")
 ```
+
+```{r get random seed of data}
+set.seed(123)
+X_sample<-aq_df_filtered[sample(nrow(aq_df_filtered), 5000), ]
+X_sample[X_sample < 0] <- 0  # Replace negative values with 0
+X_sample <- na.omit(X_sample)  # Remove rows with NA values
+
+```
+
 
 ```{r}
 # remove non numeric data -- can't put non numeric data through nmf
@@ -30,12 +40,9 @@ numeric_cols <- c("bin0", "bin1", "bin2", "bin3", "bin4", "bin5", "bin6", "bin7"
                   "bin16", "bin17", "bin18", "bin19", "bin20", "bin21", "bin22", "bin23",
                   "pm1", "pm25", "pm10")
 
-X <- aq_df_filtered[, numeric_cols]
+X <- X_sample[, numeric_cols]
 X <- as.matrix(X) # transform into matrix
-X <- na.omit(X)  # Remove rows with NA values
 
-# Ensure all values are non-negative 
-X[X < 0] <- 0  # Replace negative values with 0
 ```
 
 ```{r}
@@ -43,10 +50,8 @@ summary(X)
 ```
 
 ```{r}
-set.seed(123)  # For reproducibility
-X_sample <- X[sample(nrow(X), 5000), ]  # Sample 5000 rows
 # .options = t stores the residuals track
-res <- nmf(X_sample, 4, method="brunet", seed=123, .options = "t")
+res <- nmf(X, 4, method="brunet", seed=123, .options = "t")
 
 ```
 
@@ -80,35 +85,16 @@ heatmap(basis(res) %*% coef(res))
 
     -   The clusters may indicate groups of similar environmental conditions (e.g., high vs. low pollution levels).
 
-```{r}
-heatmap(basis(res), scale="row", main="Normalized Feature Contributions")
-print(basis(res))  # View raw feature contributions
-```
-```{r}
-heatmap(log1p(X))
-
-```
-
-```{r}
-coefmap(res)
-```
-```{r}
-glimpse(res)
-```
 
 ```{r}
 ## first need to access factor data
-test_x <-
-  basis(res)
+basis_df <-
+  data.frame(basis(res))
 
-test_y <-
-  coef(res)
+coef_df <-
+  data.frame(coef(res))
 
-test_x |>
-  data.frame(test_x)
 
-test_y <-
-  data.frame(test_y) 
 ```
 
 
@@ -117,24 +103,24 @@ test_y <-
 ## want to create a bar plot, where each bin is a bar, separated by the 4 factors
 # first need to create a factor column
 
-test_y$Factor <- as.factor(1:nrow(test_y))
+coef_df$Factor <- as.factor(1:nrow(coef_df))
 
-test_y <- test_y |>
+coef_df <- coef_df |>
   select(Factor, everything())
 
 # Reshape Data to Long Format
-df_long <- test_y |>
+coef_df_long <- coef_df |>
   pivot_longer(cols = -Factor, names_to = "Bin", values_to = "Value")
 
-glimpse(df_long)
+glimpse(coef_df_long)
 # Set threshold to filter out small values
 threshold <- 1e-5  # Arbitrary
 
-df_long <- df_long |>
+coef_df_long <- coef_df_long |>
   filter(Value > threshold)  # Keep only bins above threshold
 
 # Plot the Data
-ggplot(df_long, aes(x = Bin, y = Value, fill = Bin)) +
+ggplot(coef_df_long, aes(x = Bin, y = Value, fill = Bin)) +
   geom_bar(stat = "identity", position = "dodge") +  # Grouped bars
   facet_wrap(~Factor, scales = "free") +  # Separate by factor
   theme_minimal() +
@@ -143,16 +129,23 @@ ggplot(df_long, aes(x = Bin, y = Value, fill = Bin)) +
 ```
 ```{r}
 # attempt at time series plot
+basis_df <-
+  basis_df |>
+    mutate(timestamp = X_sample$timestamp,
+           date = X_sample$date)
 
-library(openair)
+basis_df <-
+  basis_df |>
+    select(timestamp, everything())
 
-test_x
+timePlot(basis_df, pollutant = c("X1", "X2", "X3", "X4"), group = TRUE) # time plot ugly af
+
+
+my_plot <- timeVariation(basis_df, pollutant = c("X1", "X2", "X3", "X4"), ci = FALSE) 
+plot(my_plot, subset = "hour")
+
+
 ```
 
 
-
-```{r}
-basismap(res)
-
-```
 
