@@ -1,0 +1,218 @@
+---
+title: "nmf attempt 2"
+output: html_document
+date: "2025-02-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "///wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/SB")
+getwd()
+
+```
+
+```{r load packages}
+library(dplyr)
+library(NMF)
+library(tidyverse)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(scales)  # For percentage formatting
+library(openair)
+
+```
+
+```{r load data}
+getwd()
+load("cleaned_modpm.RData")
+```
+
+```{r get random seed of data}
+# X_sample<-aq_df_filtered[sample(nrow(aq_df_filtered), 5000), ]
+X_sample <- na.omit(aq_df_filtered)  # Remove rows with NA values
+
+X_sample <- X_sample[sample(nrow(X_sample), 5000), ]
+X_sample[X_sample < 0] <- 0  # Replace negative values with 0
+
+```
+
+
+```{r}
+# remove non numeric data -- can't put non numeric data through nmf
+numeric_cols <- c("bin0", "bin1", "bin2", "bin3", "bin4", "bin5", "bin6", "bin7",
+                  "bin8", "bin9", "bin10", "bin11", "bin12", "bin13", "bin14", "bin15",
+                  "bin16", "bin17", "pm1", "pm25", "pm10", "no", "co", "no2", "o3")
+
+X <- X_sample[, numeric_cols]
+X <- as.matrix(X) # transform into matrix
+```
+
+```{r}
+exists("cophcor", where = "package:NMF")
+
+```
+
+
+```{r}
+summary(X)
+```
+
+```{r}
+# factors
+k_values <- 1:4
+
+coph_cor_values <- numeric(length(k_values))
+```
+
+```{r}
+for (i in seq_along(k_values)) {
+  k <- k_values[i]
+  
+  # Perform NMF with multiple runs (50 for stability)
+  nmf_result <- nmf(X, rank = k, nrun = 50, method = "brunet")
+  
+  # Extract the consensus matrix
+  consensus_mat <- consensus(nmf_result)
+  
+  # Compute cophenetic correlation
+  coph_cor_values[i] <- cophcor(consensus_mat, linkage = "average")
+}
+
+# Display cophenetic correlation values for each k
+df_x <- data.frame(k = k_values, cophenetic_correlation = coph_cor_values)
+
+```
+
+```{r}
+df_x |>
+  ggplot(aes(x = k, y = cophenetic_correlation)) +
+  geom_point()
+```
+
+
+```{r}
+# .options = t stores the residuals track
+# '.R#brunet', '.R#lee', '.R#nsNMF', '.R#offset', '.siNMF', 'brunet', 'Frobenius',
+#  'KL', 'lee', 'ls-nmf', 'nsNMF', 'offset', 'pe-nmf', 'siNMF', 'snmf/l',
+#  'snmf/r'.
+res <- nmf(X, rank = 4, method = "brunet", seed=123, .options = "t")
+
+```
+
+```{r}
+summary(res)
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(res)
+# Check how well the data is approximated
+heatmap(basis(res) %*% coef(res))
+```
+
+# Heat Map Notes:
+
+-   The labels along the X-axis are the features used in the NMF analysis
+
+-   The Y-axis represents sample
+
+-   The clustering dendrogram (tree-like structure) suggests that similar samples are grouped together
+
+-   Dark red regions indicate higher values.
+
+-   Light yellow regions indicate lower values (almost zero)
+
+-   This suggests that some features (e.g., pm10, bin3) have higher values in certain groups of samples
+
+-   The features are not evenly distributed; most values are close to zero except for a few high-intensity ones
+
+-   Only certain variables (e.g., pm10, bin3, bin19) seem to contribute significantly to the structure.
+
+    -   The clusters may indicate groups of similar environmental conditions (e.g., high vs. low pollution levels).
+
+
+```{r}
+## first need to access factor data
+basis_df <-
+  data.frame(basis(res))
+
+coef_df <-
+  data.frame(coef(res))
+
+
+```
+
+
+```{r}
+
+## want to create a bar plot, where each bin is a bar, separated by the 4 factors
+# first need to create a factor column
+
+coef_df$Factor <- as.factor(1:nrow(coef_df))
+
+coef_df <- coef_df |>
+  select(Factor, everything())
+
+# Reshape Data to Long Format
+coef_df_long <- coef_df |>
+  pivot_longer(cols = -Factor, names_to = "Bin", values_to = "Value")
+
+glimpse(coef_df_long)
+# Set threshold to filter out small values
+threshold <- 1e-4  # Arbitrary
+
+coef_df_long <- coef_df_long |>
+  filter(Value > threshold)  # Keep only bins above threshold
+
+# Plot the Data
+ggplot(coef_df_long, aes(x = Bin, y = Value, fill = Bin)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Grouped bars
+  facet_wrap(~Factor, scales = "free") +  # Separate by factor
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_viridis_d()  # Improve color scheme
+```
+```{r}
+# attempt at time series plot
+basis_df <-
+  basis_df |>
+    mutate(timestamp = X_sample$timestamp_local.x,
+           date = X_sample$date)
+
+basis_df <-
+  basis_df |>
+    select(timestamp, everything())
+
+timePlot(basis_df, pollutant = c("X1", "X2", "X3", "X4"), group = TRUE) # time plot ugly af
+
+
+my_plot <- timeVariation(basis_df, pollutant = c("X1", "X2", "X3", "X4"), ci = FALSE) 
+plot(my_plot, subset = "hour")
+
+
+```
+
+```{r}
+# attempt to create a polar plot
+
+basis_df <-
+  basis_df |>
+    mutate(wd = X_sample$wd,
+           ws = X_sample$ws,
+           lat = X_sample$lat,
+           lon = X_sample$lon)
+
+basis_df
+
+polarPlot(basis_df, pollutant = "X1")
+
+
+polarPlot(basis_df, pollutant = "X2")
+
+polarPlot(basis_df, pollutant = "X3")
+
+polarPlot(basis_df, pollutant = "X4")
+
+```
+

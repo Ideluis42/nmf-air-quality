@@ -1,0 +1,107 @@
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "//wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/Galena_Park")
+```
+
+```{r}
+# There are a few packages that we'll start using immediately and that will be used throughout the .rmd file. We'll load them first.
+library(data.table) #to use the data.table variable type
+library(dplyr) #this library allows you to use the %>% operator
+library(tidyr) #this library lets you use the complete function to account for time syncing
+library(tidyverse) #this library allows .csv reading
+library(lubridate) #deals with datetime formatting
+library(openair) #this package efficiently generates figures for air quality data analysis. it's our best friend.
+library(openairmaps) #this package will allow us to superimpose openair figures onto maps later on.
+```
+
+# Load Air Quality Data file.
+
+```{r}
+load("graphableData.RData")
+```
+
+# Summary statistics
+
+```{r}
+# Looking briefly at summary statistics will give you a sense of the variables that you just loaded. This can also tip you off to things that might need attention. 
+# What do you notice in these summary statistics?
+
+summary(mod_met)
+
+```
+
+# Date formatting
+
+```{r}
+# Dates and times have a bunch of different possible formats. These formats can be the bane of your analysis existence. Thankfully the lubridate package (which we loaded above) makes things smoother. It even automatically detects daylight saving time!
+mod_met$date <- as.POSIXct(strptime(mod_met$timestamp_local.x, format = "%Y-%m-%d %H:%M:%S", tz = "US/Central"))
+```
+
+```{r}
+# drop na columns
+
+na_cols <- c("sitename", "original_met_time", "timestamp_local.y")
+
+mod_met <- mod_met %>% select(-(na_cols))
+
+mod_met
+```
+
+```{r}
+mod_met
+```
+
+```{r}
+outlierReplace = function(dataframe, cols, rows, newValue = NA) {
+    if (any(rows)) {
+        set(dataframe, rows, cols, newValue)
+    }
+}
+```
+
+## Define threshold values
+
+```{r}
+
+# What are the maximum values you might reasonably expect to see in ambient air?
+# How do these compare with NAAQS?
+pm10_threshold <- 1000
+pm25_threshold <- 100
+pm1_threshold <- 50
+no_threshold <-30
+no2_threshold <- 400
+co_threshold <- 4000
+o3_threshold <- 200
+ws_threshold <- 10  # in m/s; filtered after mph to m/s conversion
+
+```
+
+## Filter using outlierReplace function
+
+```{r}
+# Replace values above threshold defined above, filter values below zero
+
+aq_df_filtered<-mod_met   # Create a new dataframe that will be filtered and preserve the original
+
+# Filter out above thresholds
+outlierReplace(aq_df_filtered, "pm10", which(aq_df_filtered$pm10 > pm10_threshold), NA)
+outlierReplace(aq_df_filtered, "pm25", which(aq_df_filtered$pm25 > pm25_threshold), NA)
+outlierReplace(aq_df_filtered, "pm1", which(aq_df_filtered$pm1 > pm1_threshold), NA)
+
+outlierReplace(aq_df_filtered, "ws", which(aq_df_filtered$pm1 > ws_threshold), NA)
+
+
+# Filter out below zero, since negative pollutant concentrations aren't real
+outlierReplace(aq_df_filtered, "pm10", which(aq_df_filtered$pm10 < 0), NA)
+outlierReplace(aq_df_filtered, "pm25", which(aq_df_filtered$pm25 < 0), NA)
+outlierReplace(aq_df_filtered, "pm1", which(aq_df_filtered$pm1 < 0), NA)
+
+
+outlierReplace(aq_df_filtered, "ws", which(aq_df_filtered$pm1 < 0), NA)
+```
+
+```{r}
+save(aq_df_filtered, file = paste0("\\\\wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/Galena_Park/", "cleaned_modpm.RData"))
+```
+
+
