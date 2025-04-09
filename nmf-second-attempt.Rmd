@@ -6,26 +6,27 @@ date: "2025-02-13"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "//wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/GHV")
 ```
 
 ```{r load packages}
 library(dplyr)
 library(NMF)
 library(tidyverse)
-setwd("//wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality")
+setwd("//wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/GHV")
 library(ggplot2)
 library(tidyr)
 library(dplyr)
 library(scales)  # For percentage formatting
 library(openair)
+
 ```
 
 ```{r load data}
-load("cleaned_modpm.RData")
+load("graphableData.RData")
 ```
 
 ```{r get random seed of data}
-set.seed(123)
 X_sample<-aq_df_filtered[sample(nrow(aq_df_filtered), 5000), ]
 X_sample[X_sample < 0] <- 0  # Replace negative values with 0
 X_sample <- na.omit(X_sample)  # Remove rows with NA values
@@ -42,16 +43,57 @@ numeric_cols <- c("bin0", "bin1", "bin2", "bin3", "bin4", "bin5", "bin6", "bin7"
 
 X <- X_sample[, numeric_cols]
 X <- as.matrix(X) # transform into matrix
+```
+
+```{r}
+exists("cophcor", where = "package:NMF")
 
 ```
+
 
 ```{r}
 summary(X)
 ```
 
 ```{r}
+# factors
+k_values <- 2:4
+
+coph_cor_values <- numeric(length(k_values))
+```
+
+```{r}
+for (i in seq_along(k_values)) {
+  k <- k_values[i]
+  
+  # Perform NMF with multiple runs (50 for stability)
+  nmf_result <- nmf(X, rank = k, nrun = 50, method = "brunet")
+  
+  # Extract the consensus matrix
+  consensus_mat <- consensus(nmf_result)
+  
+  # Compute cophenetic correlation
+  coph_cor_values[i] <- cophcor(consensus_mat, linkage = "average")
+}
+
+# Display cophenetic correlation values for each k
+df_x <- data.frame(k = k_values, cophenetic_correlation = coph_cor_values)
+
+```
+
+```{r}
+df_x |>
+  ggplot(aes(x = k, y = cophenetic_correlation)) +
+  geom_point()
+```
+
+
+```{r}
 # .options = t stores the residuals track
-res <- nmf(X, 4, method="brunet", seed=123, .options = "t")
+# '.R#brunet', '.R#lee', '.R#nsNMF', '.R#offset', '.siNMF', 'brunet', 'Frobenius',
+#  'KL', 'lee', 'ls-nmf', 'nsNMF', 'offset', 'pe-nmf', 'siNMF', 'snmf/l',
+#  'snmf/r'.
+res <- nmf(X, rank = 4, method = "brunet", seed=123, .options = "t")
 
 ```
 
@@ -60,6 +102,7 @@ summary(res)
 ```
 
 ```{r}
+par(mfrow=c(2,2))
 plot(res)
 # Check how well the data is approximated
 heatmap(basis(res) %*% coef(res))
@@ -114,7 +157,7 @@ coef_df_long <- coef_df |>
 
 glimpse(coef_df_long)
 # Set threshold to filter out small values
-threshold <- 1e-5  # Arbitrary
+threshold <- 1e-4  # Arbitrary
 
 coef_df_long <- coef_df_long |>
   filter(Value > threshold)  # Keep only bins above threshold

@@ -212,4 +212,53 @@ polarPlot(basis_df, pollutant = "X3")
 
 
 ```
+## By Sensor Analysis
+```{r}
+
+# grab each unique sensor in the data set
+sensors <- unique(aq_df_filtered$sn)
+
+sensors
+  
+```
+
+```{r}
+# nmf function
+
+# remove non numeric data -- can't put non numeric data through nmf
+numeric_cols <- c("pm1", "pm25", "pm10")
+
+
+
+run_nmf <- function(df, numeric_cols, rank) {
+  X_sample <- na.omit(df)  # Remove rows with NA values
+
+  X_sample <- X_sample[sample(nrow(X_sample), 5000), ]
+  X_sample[X_sample < 0] <- 0  # Replace negative values with 0
+  
+  X <- X_sample[, numeric_cols]
+  X <- as.matrix(X) # transform into matrix
+  
+  res <- nmf(X, rank, method = "brunet", seed=123, .options = "t")
+  
+  return(res)
+}
+```
+
+```{r}
+
+# run analysis on each sensor
+# Create separate df for each sensor
+
+for (sensor in sensors){
+  df <- aq_df_filtered |>
+    filter(sn == sensor)
+  
+  res <- run_nmf(df, numeric_cols, 3)
+  
+  df_name <- paste0("res_", sensor)
+  
+  assign(df_name, res)
+}
+```
 
