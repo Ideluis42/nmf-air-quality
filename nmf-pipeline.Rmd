@@ -1,0 +1,265 @@
+---
+title: "NMF Documentation"
+author: "Isabel de Luis"
+date: "2025-04-09"
+output: html_document
+---
+
+## Isa's handy to do list
+
+-   Write documentation
+-   Figure out plot titles
+-   Polar Map Plots!!!
+-   Rank documentation \<- probably can write another helper
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "////wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/")
+```
+
+```{r load packages}
+library(dplyr)
+library(NMF)
+library(tidyverse)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(scales)  # For percentage formatting
+library(openair)
+```
+
+## Loading Data
+
+```{r data load}
+data_path <- "Galena_Park/cleaned_modpm.RData" # change with your data path
+
+cols_analysed <- c("pm1", "pm25", "pm10") # columns to be analysed 
+
+
+load(data_path)
+```
+
+
+## Helper Functions
+
+```{r helper functions}
+find_rank <- function(X, start_k, end_k) {
+  
+  # factors
+  k_values <- start_k:end_k
+  
+  coph_cor_values <- numeric(length(k_values))
+  
+  for (i in seq_along(k_values)) {
+    k <- k_values[i]
+    
+    # Perform NMF with multiple runs (50 for stability)
+    nmf_result <- nmf(X, rank = k, nrun = 50, method = "brunet")
+    
+    # Extract the consensus matrix
+    consensus_mat <- consensus(nmf_result)
+    
+    # Compute cophenetic correlation
+    coph_cor_values[i] <- cophcor(consensus_mat, linkage = "average")
+    
+  }
+  
+  # Display cophenetic correlation values for each k
+  df_x <- data.frame(k = k_values, cophenetic_correlation = coph_cor_values)
+  
+  df_x |>
+      ggplot(aes(x = k, y = cophenetic_correlation)) +
+      geom_point()
+  }
+
+
+run_nmf <- function(df, numeric_cols, rank) {
+  X_sample <- na.omit(df)  # Remove rows with NA values
+
+  X_sample <- X_sample[sample(nrow(X_sample), 5000), ]
+  X_sample[X_sample < 0] <- 0  # Replace negative values with 0
+  
+  X <- X_sample[, numeric_cols]
+  X <- as.matrix(X) # transform into matrix
+  
+  res <- nmf(X, rank, method = "brunet", seed=123, .options = "t")
+  
+  return(res)
+}
+
+generate_bar_plot <- function(coef_df) {
+  coef_df$Factor <- as.factor(1:nrow(coef_df))
+
+  coef_df <- coef_df |>
+    select(Factor, everything())
+  
+  # Reshape Data to Long Format
+  coef_df_long <- coef_df |>
+    pivot_longer(cols = -Factor, names_to = "Bin", values_to = "Value")
+  
+  glimpse(coef_df_long)
+  # Set threshold to filter out small values
+  threshold <- 1e-4  # Arbitrary
+  
+  coef_df_long <- coef_df_long |>
+    filter(Value > threshold)  # Keep only bins above threshold
+  
+  # Plot the Data
+  plot <- ggplot(coef_df_long, aes(x = Bin, y = Value, fill = Bin)) +
+    geom_bar(stat = "identity", position = "dodge") +  # Grouped bars
+    facet_wrap(~Factor, scales = "free") +  # Separate by factor
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_viridis_d()  # Improve color scheme
+  
+  return(plot)
+  
+}
+
+generate_time_variation <- function(basis_df) {
+  basis_df <-
+    basis_df |>
+      mutate(timestamp = X_sample$timestamp_local.x,
+             date = X_sample$date)
+
+  basis_df <-
+    basis_df |>
+      select(timestamp, everything())
+
+  
+  my_plot <- timeVariation(basis_df, pollutant = c("X1", "X2", "X3"), ci = FALSE, plot = FALSE) 
+  
+  return(my_plot)
+}
+
+generate_polar_plot <- function(basis_df, rank) {
+  basis_df <-
+  basis_df |>
+    mutate(wd = X_sample$wd,
+           ws = X_sample$ws,
+           lat = X_sample$lat,
+           lon = X_sample$lon)
+  
+  for (i in 1:rank) {
+    pol = paste0("X", i)
+    polarPlot(basis_df, pollutant = pol)
+  }
+}
+
+```
+
+
+## Network Analysis
+
+### NMF Analysis
+
+```{r nmf analysis}
+X_sample <- na.omit(aq_df_filtered)  # Remove rows with NA values
+
+X_sample <- X_sample[sample(nrow(X_sample), 100000), ]
+X_sample[X_sample < 0] <- 0  # Replace negative values with 0
+
+X <- X_sample[, cols_analysed]
+X <- as.matrix(X) # transform into matrix
+```
+
+#### Rank Factorization
+```{r}
+find_rank(X, 2, 6)
+```
+
+```{r}
+res <- nmf(X, rank = 4, method = "brunet", seed=123, .options = "t")
+
+basis_df <-
+  data.frame(basis(res))
+
+coef_df <-
+  data.frame(coef(res))
+```
+
+```{r plots}
+generate_bar_plot(coef_df)
+generate_time_variation(basis_df)
+generate_polar_plot(basis_df, 5)
+```
+
+## By Sensor Analysis
+
+### NMF Analysis
+
+```{r get sensors}
+sensors <- unique(aq_df_filtered$sn)
+
+sensors
+```
+
+```{r by sensor nmf analysis}
+
+for (sensor in sensors){
+  df <- aq_df_filtered |>
+    filter(sn == sensor)
+  
+  res <- run_nmf(df, cols_analysed, 3)
+  
+  basis_df_name <- paste0("basis_df_", sensor)
+  coef_df_name <- paste0("coef_df_", sensor)
+  
+  basis_df <-
+    data.frame(basis(res))
+
+  coef_df <-
+    data.frame(coef(res))
+  
+  assign(basis_df_name, basis_df)
+  assign(coef_df_name, coef_df)
+}
+
+```
+
+### Bar Plots
+
+```{r sensor bar plots}
+
+for (sensor in sensors) {
+  coef_df_name <- paste0("coef_df_", sensor)
+  coef_df <- get(coef_df_name)
+  my_plot <- generate_bar_plot(coef_df)
+  
+  plot(my_plot) +
+    ggtitle(paste0(sensor), " factors bar plot")
+  
+  plot_name <- paste0("bar_plot_", sensor)
+  
+  assign(plot_name, plot)
+}
+
+```
+
+### Time Variation Plots
+
+```{r}
+# generate time variation plot
+
+for (sensor in sensors) {
+  basis_df_name <- paste0("basis_df_", sensor)
+  basis_df <- get(basis_df_name)
+  my_plot <- generate_time_variation(basis_df)
+  
+  plot(my_plot)
+  
+  plot_name <- paste0("time_variation_", sensor)
+  
+  assign(plot_name, plot)
+}
+```
+
+### Polar Plots
+
+```{r}
+for (sensor in sensors) {
+  basis_df_name <- paste0("basis_df_", sensor)
+  basis_df <- get(basis_df_name)
+  generate_polar_plot(basis_df, 3)
+}
+```
