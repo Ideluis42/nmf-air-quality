@@ -28,15 +28,24 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = "////wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/")
 ```
 
-Now, you need to load the following packages that this file uses to do the analysis. If this chunk fails to run, you probably don't have a package installed on your machine -- you can install the package using the R console with this line: `install.packages("Package Name")`.
+Now, you need to load the following packages that this file uses to do the analysis.
 
 ```{r load packages}
+
+# if any packages are not installed on machine, install them
+if (!require(dplyr)) install.packages("dpylr")
+if (!require(NMF)) install.packages("NMF")
+if (!require(tidyverse)) install.packages("tidyverse")
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(tidyr)) install.packages("tidyr")
+if (!require(scales)) install.packages("scales")
+if (!require(openair)) install.packages("openair")
+
 library(dplyr)
 library(NMF)
 library(tidyverse)
 library(ggplot2)
 library(tidyr)
-library(dplyr)
 library(scales)  # For percentage formatting
 library(openair)
 ```
@@ -46,9 +55,6 @@ Now that your R is setup, you can start your analysis! The first thing you want 
 
 ```{r data load}
  #isa to do make it less specific to your machine
-
-data_path <- "SB/cleaned_modpm.RData" # change with your data path
-
 load(data_path)
 ```
 
