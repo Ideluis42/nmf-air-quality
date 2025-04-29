@@ -17,15 +17,17 @@ By Isa de Luis and Gia-Uyen Tran
 
 The first you need to do in order to run this pipeline is setup your R so that it can access the data files. Set the `root_dir` variable below to the folder that the pipeline is in. Within that folder, you should create a `data` folder that you can put your `Rdata` files of air quality data.
 
-You can download Air Partners air quality data here: please note that if you change any file names, you will need to change the code appropriately so that it works.
+You can download Air Partners air quality data here: 
+
+Please note that if you change any file names, you will need to change the code appropriately so that it works.
 
 ### Isa Side Bar: Might be able to create pipeline such that all they need to do is download a google drive folder and BAM everything works
 
 ```{r setup, include=FALSE}
 
-root_dir <-  NA # Change this to be the path to the folder this file is in
+root_dir <-  "////wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/" # Change this to be the path to the folder this file is in
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = "////wsl.localhost/Ubuntu/home/ideluis42/nmf-air-quality/")
+knitr::opts_knit$set(root.dir = root_dir)
 ```
 
 Now, you need to load the following packages that this file uses to do the analysis.
@@ -51,10 +53,13 @@ library(openair)
 ```
 
 ## Loading Data
-Now that your R is setup, you can start your analysis! The first thing you want to do is make sure that your data is in the `/data` folder that you created earlier. Set the `data_path` variable below to the path to the data. If you've followed the instructions above, it should be something like `data/filename.RData`.
+Now that your R is setup, you can start your analysis! The first thing you want to do is make sure that your data is in the `/data` folder that you created earlier. Set the `data_path` variable below to the path to the data. If you've followed the instructions above, it should be something like `data/filename.RData`. For this workbook, we're going to use the Air Partners' South Bronx dataset.
 
 ```{r data load}
  #isa to do make it less specific to your machine
+
+data_path <- "SB/graphableData.RData"
+  
 load(data_path)
 ```
 
@@ -99,9 +104,18 @@ cols_analysed <- c("pm1",
 ## Helper Functions
 To help facilate our analysis, we've written a series of helper functions! All you have to do is run them on the dataset.
 
-The first helper function is `find_rank`. This function helps you find the right number of factors for your analysis by computing the coephentic correlation for NMF analysis with different numbers of factors. The higher the copehentic correlation, the better your results are (? hate how this is written also not sure if true). Find rank takes three parameters: {isa to do}
+The first helper function is `find_rank`. This function helps you find the right number of factors for your analysis by computing the coephentic correlation for NMF analysis with different numbers of factors. The higher the copehentic correlation, the better your results are (? hate how this is written also not sure if true). Find rank takes three parameters:
+  - `X`: The matrix you want to factorize
+  - `start_k`: The minimum number of factors you want
+  - `end_k`: The maximum number of factors you want
 
-The next helper function is `run_nmf`, which does exactly what its name implies -- it runs the NMF analysis on a matrix. 
+The remaining functions, `generate_bar_plot`, `generate_time_variation`, and `generate_polar_plot` create plots from the two matrices that create the result matrix -- the basis matrix and the coefficient matrix. These plots can be used to analyze the results of the NMF and determine what features create each factor.
+
+`generate_bar_plot` takes the coefficient matrix as a parameter and returns a dataframe with the bar plot. 
+
+`generate_time_variation` takes the basis matrix as a parameter and returns a dataframe with the time variation plot.
+
+`generate_polar_plot` takes the basis matrix and the number of factors as a parameter and returns a dataframe with the polar plot.
 
 ```{r helper functions}
 find_rank <- function(X, start_k, end_k) {
@@ -133,20 +147,6 @@ find_rank <- function(X, start_k, end_k) {
       geom_point()
   }
 
-
-run_nmf <- function(df, cols, rank) {
-  X_sample <- na.omit(df)  # Remove rows with NA values
-
-  X_sample <- X_sample[sample(nrow(X_sample), 5000), ]
-  X_sample[X_sample < 0] <- 0  # Replace negative values with 0
-  
-  X <- X_sample[, cols]
-  X <- as.matrix(X) # transform into matrix
-  
-  res <- nmf(X, rank, method = "brunet", seed=123, .options = "t")
-  
-  return(res)
-}
 
 generate_bar_plot <- function(coef_df) {
   coef_df$Factor <- as.factor(1:nrow(coef_df))
@@ -211,26 +211,34 @@ generate_polar_plot <- function(basis_df, rank) {
 
 ## Network Analysis
 
-### NMF Analysis
+There are two ways we can analyze air quality data -- we can analyze the entire network as a unit or we can analyze each individual sensor. We're going to first look at the entire network and then we'll go through each individual sensor.
+
+The first thing we need to do is create our sample data from random rows in our air quality data frame. We're going to omit rows that have `NA` values in our sample data because NMF can't analyze `NA` values. Once we've done that, we're going to take a random sample of 200000 values and replace any negative values with 0 since NMF only works on positive numbers.
 
 ```{r nmf analysis}
 X_sample <- na.omit(aq_df_filtered)  # Remove rows with NA values
 
-X_sample <- X_sample[sample(nrow(X_sample), 100000), ]
+X_sample <- X_sample[sample(nrow(X_sample), 200000), ]
 X_sample[X_sample < 0] <- 0  # Replace negative values with 0
 
-X <- X_sample[, cols_analysed]
+X <- X_sample[, cols_analysed] # Only keep columns to be analysed
 X <- as.matrix(X) # transform into matrix
 ```
 
-#### Rank Factorization
+Now that you have your matrix, you can find out what number of factors is best for analysis. For the South Bronx data, the best number of factors is ..., which you can see in the plot because it has the highest copehentic correlation
 
 ```{r}
 find_rank(X, 2, 6)
 ```
+Now you can run your NMF analysis on the matrix! The package NMF has a function `nmf` that lets you do that by specifing the number of factors (which we found just above), the method, and the seed (if you want to be able to replicate the results). Set the variables `k` and `s` below the set the rank (`k`) and the seed (`s`). The NMF stores its results in a matrix called `res`. Then, we split up res into its two components -- the basis matrix and the coefficient matrix and turn those into dataframes for plotting.
 
 ```{r}
-res <- nmf(X, rank = 4, method = "brunet", seed=123, .options = "t")
+# Edit these to customize your analysis
+k <- 3
+s <- NA
+
+# DO NOT EDIT BELOW HERE
+res <- nmf(X, rank = k, method = "brunet", seed = s, .options = "t")
 
 basis_df <-
   data.frame(basis(res))
@@ -239,21 +247,26 @@ coef_df <-
   data.frame(coef(res))
 ```
 
+The last thing we can do is create plots using the helper functions! 
+
 ```{r plots}
 generate_bar_plot(coef_df)
 generate_time_variation(basis_df)
-generate_polar_plot(basis_df, 5)
+generate_polar_plot(basis_df, k)
 ```
 
 ## By Sensor Analysis
 
-### NMF Analysis
+We can also do NMF on each individual sensor instead of the whole network in order to see how location affects each factor. 
+
+First, we get a list of each sensor name and save it in a variable called `sensors`. 
 
 ```{r get sensors}
 sensors <- unique(aq_df_filtered$sn)
 
 sensors
 ```
+Once we've gotten our sensors, we can do the exact same nmf analysis as above, just looping for each sensor. Like above, we create a sample matrix, run NMF on it, and create a basis and a coefficient data frame for each sensor. Once you've run the block below, you should have two dataframes for each sensor that follow this naming convention: `{df type}_{SENSOR NUMBER}`.
 
 ```{r by sensor nmf analysis}
 
@@ -261,7 +274,15 @@ for (sensor in sensors){
   df <- aq_df_filtered |>
     filter(sn == sensor)
   
-  res <- run_nmf(df, cols_analysed, 3)
+  X_sample <- na.omit(df)  # Remove rows with NA values
+
+  X_sample <- X_sample[sample(nrow(X_sample), 200000), ]
+  X_sample[X_sample < 0] <- 0  # Replace negative values with 0
+  
+  X <- X_sample[, cols_analysed] # Only keep columns to be analysed
+  X <- as.matrix(X) # transform into matrix
+  
+  res <- nmf(X, rank = k, method = "brunet", seed = s, .options = "t")
   
   basis_df_name <- paste0("basis_df_", sensor)
   coef_df_name <- paste0("coef_df_", sensor)
@@ -278,6 +299,7 @@ for (sensor in sensors){
 
 ```
 
+Now you can generate plots for each sensor by looping through that list again and running the plotting helper functions!
 ### Bar Plots
 
 ```{r sensor bar plots}
