@@ -58,7 +58,7 @@ Now that your R is setup, you can start your analysis! The first thing you want 
 ```{r data load}
  #isa to do make it less specific to your machine
 
-data_path <- "SB/graphableData.RData"
+data_path <- "GHV/graphableData.RData"
   
 load(data_path)
 ```
@@ -113,9 +113,10 @@ The remaining functions, `generate_bar_plot`, `generate_time_variation`, and `ge
 
 `generate_bar_plot` takes the coefficient matrix as a parameter and returns a dataframe with the bar plot. 
 
-`generate_time_variation` takes the basis matrix as a parameter and returns a dataframe with the time variation plot.
-
-`generate_polar_plot` takes the basis matrix and the number of factors as a parameter and returns a dataframe with the polar plot.
+`generate_time_variation` and `generate_polar_plot` take the following parameters:
+  - `basis_df`: The basis matrix dataframe
+  - `X_sample`: The dataframe of the sample data
+  - `k`: The number of factors
 
 ```{r helper functions}
 find_rank <- function(X, start_k, end_k) {
@@ -177,7 +178,7 @@ generate_bar_plot <- function(coef_df) {
   
 }
 
-generate_time_variation <- function(basis_df) {
+generate_time_variation <- function(basis_df, X_sample, k) {
   basis_df <-
     basis_df |>
       mutate(timestamp = X_sample$timestamp_local.x,
@@ -187,24 +188,40 @@ generate_time_variation <- function(basis_df) {
     basis_df |>
       select(timestamp, everything())
 
+  if (k == 2) {
+    my_plot <- timeVariation(basis_df, pollutant = c("X1", "X2"), ci = FALSE, plot = FALSE)  
+  }
   
-  my_plot <- timeVariation(basis_df, pollutant = c("X1", "X2", "X3"), ci = FALSE, plot = FALSE) 
+  if (k == 3) {
+    my_plot <- timeVariation(basis_df, pollutant = c("X1", "X2", "X3"), ci = FALSE, plot = FALSE) 
+  }
+  
+  if (k == 4) {
+    my_plot <- timeVariation(basis_df, pollutant = c("X1", "X2", "X3", "X4"), ci = FALSE, plot = FALSE) 
+  }
+  
+  if (k == 5) {
+    my_plot <- timeVariation(basis_df, pollutant = c("X1", "X2", "X3", "X4", "X5"), ci = FALSE, plot = FALSE) 
+  }
+  
   
   return(my_plot)
 }
 
-generate_polar_plot <- function(basis_df, rank) {
+generate_polar_plot <- function(basis_df, X_sample, k) {
   basis_df <-
   basis_df |>
     mutate(wd = X_sample$wd,
            ws = X_sample$ws,
            lat = X_sample$lat,
            lon = X_sample$lon)
-  
-  for (i in 1:rank) {
+  plots <- vector("list", length = k)
+  for (i in 1:k) {
     pol = paste0("X", i)
-    polarPlot(basis_df, pollutant = pol)
+    plots[[i]] <- polarPlot(basis_df, pollutant = pol)
   }
+  
+  return(plots)
 }
 
 ```
@@ -213,32 +230,35 @@ generate_polar_plot <- function(basis_df, rank) {
 
 There are two ways we can analyze air quality data -- we can analyze the entire network as a unit or we can analyze each individual sensor. We're going to first look at the entire network and then we'll go through each individual sensor.
 
-The first thing we need to do is create our sample data from random rows in our air quality data frame. We're going to omit rows that have `NA` values in our sample data because NMF can't analyze `NA` values. Once we've done that, we're going to take a random sample of 200000 values and replace any negative values with 0 since NMF only works on positive numbers.
+The first thing we need to do is create our sample data from random rows in our air quality data frame. We're going to omit rows that have `NA` values in our sample data because NMF can't analyze `NA` values. Once we've done that, we're going to take a random sample of 10000 values and replace any negative values with 0 since NMF only works on positive numbers.
 
 ```{r nmf analysis}
+
+num_samples <- 10000 # Can play around with this number
+
+# DO NOT EDIT BELOW THIS LINE
 X_sample <- na.omit(aq_df_filtered)  # Remove rows with NA values
 
-X_sample <- X_sample[sample(nrow(X_sample), 200000), ]
+X_sample <- X_sample[sample(nrow(X_sample), num_samples), ]
 X_sample[X_sample < 0] <- 0  # Replace negative values with 0
 
 X <- X_sample[, cols_analysed] # Only keep columns to be analysed
 X <- as.matrix(X) # transform into matrix
 ```
 
-Now that you have your matrix, you can find out what number of factors is best for analysis. For the South Bronx data, the best number of factors is ..., which you can see in the plot because it has the highest copehentic correlation
+Now that you have your matrix, you can find out what number of factors is best for analysis. For the South Bronx data, the best number of factors is 4, which you can see in the plot because it has the highest copehentic correlation
 
 ```{r}
-find_rank(X, 2, 6)
+find_rank(X, 3, 5)
 ```
-Now you can run your NMF analysis on the matrix! The package NMF has a function `nmf` that lets you do that by specifing the number of factors (which we found just above), the method, and the seed (if you want to be able to replicate the results). Set the variables `k` and `s` below the set the rank (`k`) and the seed (`s`). The NMF stores its results in a matrix called `res`. Then, we split up res into its two components -- the basis matrix and the coefficient matrix and turn those into dataframes for plotting.
+Now you can run your NMF analysis on the matrix! The package NMF has a function `nmf` that lets you do that by specifing the number of factors (which we found just above) and the method. Set the variables `k` below to set the rank (`k`). The NMF stores its results in a matrix called `res`. Then, we split up res into its two components -- the basis matrix and the coefficient matrix and turn those into dataframes for plotting.
 
 ```{r}
 # Edit these to customize your analysis
-k <- 3
-s <- NA
+k <- 4
 
 # DO NOT EDIT BELOW HERE
-res <- nmf(X, rank = k, method = "brunet", seed = s, .options = "t")
+res <- nmf(X, rank = k, method = "brunet", .options = "t")
 
 basis_df <-
   data.frame(basis(res))
@@ -251,8 +271,8 @@ The last thing we can do is create plots using the helper functions!
 
 ```{r plots}
 generate_bar_plot(coef_df)
-generate_time_variation(basis_df)
-generate_polar_plot(basis_df, k)
+generate_time_variation(basis_df, X_sample, k)
+generate_polar_plot(basis_df, X_sample, k)
 ```
 
 ## By Sensor Analysis
@@ -266,7 +286,7 @@ sensors <- unique(aq_df_filtered$sn)
 
 sensors
 ```
-Once we've gotten our sensors, we can do the exact same nmf analysis as above, just looping for each sensor. Like above, we create a sample matrix, run NMF on it, and create a basis and a coefficient data frame for each sensor. Once you've run the block below, you should have two dataframes for each sensor that follow this naming convention: `{df type}_{SENSOR NUMBER}`.
+Once we've gotten our sensors, we can do the exact same nmf analysis as above, just looping for each sensor. Like above, we create a sample matrix, run NMF on it, and create a basis and a coefficient data frame for each sensor. Then, we'll generate each of the plots and save them in their own variables.
 
 ```{r by sensor nmf analysis}
 
@@ -275,14 +295,21 @@ for (sensor in sensors){
     filter(sn == sensor)
   
   X_sample <- na.omit(df)  # Remove rows with NA values
-
-  X_sample <- X_sample[sample(nrow(X_sample), 200000), ]
+  
+  if (nrow(X_sample) > num_samples) {
+    X_sample <- X_sample[sample(nrow(X_sample), num_samples), ]  
+  }
+  
+  if (nrow(X_sample) == 0) {
+    next 
+  }
+  
   X_sample[X_sample < 0] <- 0  # Replace negative values with 0
   
   X <- X_sample[, cols_analysed] # Only keep columns to be analysed
   X <- as.matrix(X) # transform into matrix
   
-  res <- nmf(X, rank = k, method = "brunet", seed = s, .options = "t")
+  res <- nmf(X, rank = k, method = "brunet", .options = "t")
   
   basis_df_name <- paste0("basis_df_", sensor)
   coef_df_name <- paste0("coef_df_", sensor)
@@ -293,56 +320,67 @@ for (sensor in sensors){
   coef_df <-
     data.frame(coef(res))
   
-  assign(basis_df_name, basis_df)
-  assign(coef_df_name, coef_df)
-}
-
-```
-
-Now you can generate plots for each sensor by looping through that list again and running the plotting helper functions!
-### Bar Plots
-
-```{r sensor bar plots}
-
-for (sensor in sensors) {
-  coef_df_name <- paste0("coef_df_", sensor)
-  coef_df <- get(coef_df_name)
-  my_plot <- generate_bar_plot(coef_df)
+  # generate bar plots
   
-  plot(my_plot) +
-    ggtitle(paste0(sensor), " factors bar plot")
+  my_plot <- generate_bar_plot(coef_df)
   
   plot_name <- paste0("bar_plot_", sensor)
   
-  assign(plot_name, plot)
-}
-
-```
-
-### Time Variation Plots
-
-```{r}
-# generate time variation plot
-
-for (sensor in sensors) {
-  basis_df_name <- paste0("basis_df_", sensor)
-  basis_df <- get(basis_df_name)
-  my_plot <- generate_time_variation(basis_df)
+  assign(plot_name, my_plot)
   
-  plot(my_plot)
+  my_plot <- generate_time_variation(basis_df, X_sample, k)
   
   plot_name <- paste0("time_variation_", sensor)
   
-  assign(plot_name, plot)
-}
-```
+  assign(plot_name, my_plot)
+  
+  my_plot <- generate_polar_plot(basis_df, X_sample, k)
+  
+  plot_name <- paste0("polar_", sensor)
+  
+  assign(plot_name, my_plot)
+  
 
-### Polar Plots
+}
+
+```
+Now you can generate the plots using the plot function! There's probably a way to automate this using for loops, but I didn't have time for that, so I did it by hand. 
+
 
 ```{r}
-for (sensor in sensors) {
-  basis_df_name <- paste0("basis_df_", sensor)
-  basis_df <- get(basis_df_name)
-  generate_polar_plot(basis_df, 3)
+plot(`bar_plot_MOD-00480`)
+plot(`time_variation_MOD-00480`)
+
+for(polar_plot in `polar_MOD-00480`) {
+  plot(polar_plot)  
+}
+
+```
+
+```{r}
+plot(`bar_plot_MOD-00481`)
+plot(`time_variation_MOD-00481`)
+
+for(polar_plot in `polar_MOD-00481`) {
+  plot(polar_plot)  
 }
 ```
+
+```{r}
+plot(`bar_plot_MOD-00482`)
+plot(`time_variation_MOD-00482`)
+
+for(polar_plot in `polar_MOD-00482`) {
+  plot(polar_plot)  
+}
+```
+
+```{r}
+plot(`bar_plot_MOD-00697`)
+plot(`time_variation_MOD-00697`)
+
+for(polar_plot in `polar_MOD-00697`) {
+  plot(polar_plot)  
+}
+```
+
