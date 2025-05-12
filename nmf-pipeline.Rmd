@@ -9,19 +9,14 @@ output: html_document
 
 By Isa de Luis and Gia-Uyen Tran
 
-## Introduction
-
-{Isa doesn't want to write this rn}
 
 ## Setup
 
 The first you need to do in order to run this pipeline is setup your R so that it can access the data files. Set the `root_dir` variable below to the folder that the pipeline is in. Within that folder, you should create a `data` folder that you can put your `Rdata` files of air quality data.
 
-You can download Air Partners air quality data here: 
-
 Please note that if you change any file names, you will need to change the code appropriately so that it works.
 
-### Isa Side Bar: Might be able to create pipeline such that all they need to do is download a google drive folder and BAM everything works
+### Isa Side Bar: Might be able to create a pipeline such that all they need to do is download a Google Drive folder and BAM everything works...but it would be a summer project....
 
 ```{r setup, include=FALSE}
 
